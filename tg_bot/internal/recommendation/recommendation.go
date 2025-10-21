@@ -1,6 +1,11 @@
 package recommendation
 
 import (
+	"math/rand"
+	"time"
+
+	"github.com/rs/zerolog/log"
+
 	"github.com/a-palonskaa/SmartBar/tg_bot/internal/coctail"
 )
 
@@ -29,5 +34,28 @@ func RecommendByFilters(filters ...[]coctail.Coctail) []coctail.Coctail {
 		result = intersectDrinks(result, f)
 	}
 
+	if len(result) == 0 {
+		for _, filter := range filters {
+			result = append(result, filter...)
+		}
+	}
+
 	return result
+}
+
+func Recommend(options ...[]coctail.Coctail) coctail.Coctail {
+	filters := [][]coctail.Coctail{
+		coctail.GetRecommendationByHoliday(),
+	}
+	filters = append(filters, options...)
+
+	recommendations := RecommendByFilters(filters...)
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	log.Info().Msgf("recommendations: %v", recommendations)
+	if len(recommendations) == 0 {
+		return coctail.Coctails[rand.Intn(len(coctail.Coctails))]
+	}
+	return recommendations[rand.Intn(len(recommendations))]
+
 }

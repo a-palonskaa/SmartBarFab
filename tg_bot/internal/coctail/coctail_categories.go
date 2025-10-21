@@ -3,6 +3,8 @@ package coctail
 import (
 	"errors"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type AlcoCategory string
@@ -128,7 +130,7 @@ var HolidayCategoryTiming = map[HolidayCategory]HolidayCategoryDates{
 		ToMonth: time.August, ToDay: 31,
 	},
 	HolidayHalloween: {
-		FromMonth: time.October, FromDay: 28,
+		FromMonth: time.October, FromDay: 20,
 		ToMonth: time.November, ToDay: 2,
 	},
 	HolidayChristmas: {
@@ -175,6 +177,8 @@ func GetCurrentHolidays(date time.Time) []HolidayCategory {
 
 func GetRecommendationByHoliday() []Coctail {
 	holidays := GetCurrentHolidays(time.Now())
+	log.Info().Msgf("holiday: %v", holidays) //DEBUG
+
 	holidayDrinks := make([]Coctail, 0)
 	for _, holiday := range holidays {
 		holidayDrinks = append(holidayDrinks, DrinksByHolidayCategory[holiday]...)

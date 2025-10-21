@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"math/rand"
 	"strconv"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 
 	"github.com/a-palonskaa/SmartBar/tg_bot/internal/coctail"
 	"github.com/a-palonskaa/SmartBar/tg_bot/internal/msg"
+	"github.com/a-palonskaa/SmartBar/tg_bot/internal/recommendation"
 )
 
 func (us *UserSessions) HandleMessage(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
@@ -128,8 +128,7 @@ func (us *UserSessions) HandleRecommendationStep1(bot *tgbotapi.BotAPI, chatID i
 		return
 	}
 
-	rand.New(rand.NewSource(time.Now().UnixNano()))
-	session.ScheduledDrink = drinks[rand.Intn(len(drinks))]
+	session.ScheduledDrink = recommendation.Recommend(drinks)
 	session.State = AUTHORIZED
 
 	ms := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s '%s'", msg.MsgWaitDrink, coctail.CoctailToNames[session.ScheduledDrink]))
