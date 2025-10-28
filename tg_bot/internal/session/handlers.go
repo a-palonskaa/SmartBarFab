@@ -26,6 +26,8 @@ func (us *UserSessions) HandleMessage(bot *tgbotapi.BotAPI, msg *tgbotapi.Messag
 		us.HandleWaitDrink(bot, chatID, text)
 	case RECOMMENDATION_STEP1:
 		us.HandleRecommendationStep1(bot, chatID, text)
+	case RECOMMENDATION_STEP2:
+		us.HandleRecommendationStep2(bot, chatID, text)
 	}
 }
 
@@ -105,7 +107,7 @@ func (us *UserSessions) RecommendDrink(bot *tgbotapi.BotAPI, chatID int64) {
 		),
 	)
 
-	msg := tgbotapi.NewMessage(chatID, "на зоже, легкий или покрепче?")
+	msg := tgbotapi.NewMessage(chatID, string(msg.MsgChooseAlcoCategory))
 	msg.ReplyMarkup = buttons
 	bot.Send(msg)
 
@@ -116,7 +118,7 @@ func (us *UserSessions) RecommendDrink(bot *tgbotapi.BotAPI, chatID int64) {
 func (us *UserSessions) HandleRecommendationStep1(bot *tgbotapi.BotAPI, chatID int64, text string) {
 	session := us.GetSession(chatID)
 
-	category, err := coctail.GetCategoryFromString(text)
+	category, err := coctail.GetAlcoCategoryFromString(text)
 	if err != nil {
 		bot.Send(tgbotapi.NewMessage(chatID, msg.MsgWrongInput.String()))
 		return
@@ -128,8 +130,47 @@ func (us *UserSessions) HandleRecommendationStep1(bot *tgbotapi.BotAPI, chatID i
 		return
 	}
 
-	session.ScheduledDrink = recommendation.Recommend(drinks)
-	session.State = AUTHORIZED
+	session.RecommenedDrinks = append(session.RecommenedDrinks, drinks)
+	session.State = RECOMMENDATION_STEP2
+
+	buttons := tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton(coctail.OccasionAlkocoding.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionRelax.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionDormParty.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionMovieNight.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionNightResearch.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionAllnighter.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionFiztechParty.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionAfterDiff.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionBrainstorm.String()),
+			tgbotapi.NewKeyboardButton(coctail.OccasionWannaGetWasted.String()),
+		),
+	)
+
+	msg := tgbotapi.NewMessage(chatID, string(msg.MsgChooseOccasion))
+	msg.ReplyMarkup = buttons
+	bot.Send(msg)
+}
+
+func (us *UserSessions) HandleRecommendationStep2(bot *tgbotapi.BotAPI, chatID int64, text string) {
+	session := us.GetSession(chatID)
+
+	category, err := coctail.GetOccasionCategoryFromString(text)
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, msg.MsgWrongInput.String()))
+		return
+	}
+
+	drinks, ok := coctail.DrinksByOccasionCategory[category]
+	if !ok || len(drinks) == 0 {
+		bot.Send(tgbotapi.NewMessage(chatID, msg.MsgWrongInput.String()))
+		return
+	}
+
+	session.RecommenedDrinks = append(session.RecommenedDrinks, drinks)
+	session.ScheduledDrink = recommendation.Recommend(session.RecommenedDrinks...)
+	session.State = DONE
 
 	ms := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s '%s'", msg.MsgWaitDrink, coctail.CoctailToNames[session.ScheduledDrink]))
 	removeKeyboard := tgbotapi.NewRemoveKeyboard(true)

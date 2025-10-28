@@ -15,6 +15,8 @@ const (
 	MsgAuthorizedCmdOptions   Msg = "у вас следующие возможности:\n/make_drink\n/delay_drink [минуты]\n/recommend_drink"
 	MsgWaitDrink              Msg = "совсем скоро вы насладитесь необыкновенным "
 	MsgWrongInput             Msg = "сладость, данный ввод нами не обрабатывается❤️"
+	MsgChooseOccasion         Msg = "какой сегодня повод, приятель?"
+	MsgChooseAlcoCategory     Msg = "на зоже, легкий или покрепче?"
 )
 
 var (

@@ -27,6 +27,10 @@ const (
 	BERRYCITRUS
 	DOUBLE_TROUBLE
 	CITRUSCOLA
+	FRUITPUNCH
+	VIRGINSUNRISE
+	CHERRYCOKE
+	VODKA
 )
 
 var Coctails = []Coctail{
@@ -49,6 +53,10 @@ var Coctails = []Coctail{
 	BERRYCITRUS,
 	DOUBLE_TROUBLE,
 	CITRUSCOLA,
+	FRUITPUNCH,
+	VIRGINSUNRISE,
+	CHERRYCOKE,
+	VODKA,
 }
 
 var TgCoctailNamesToIR = map[string]Coctail{
@@ -71,7 +79,11 @@ var TgCoctailNamesToIR = map[string]Coctail{
 	"/berrycitrus":   BERRYCITRUS,
 	"/doubletrouble": DOUBLE_TROUBLE,
 	"/citruscola":    CITRUSCOLA,
-	"/i_dont_know":   PINKYMONSTER,
+	"/fruitpunch":    FRUITPUNCH,
+	"/virginsunrise": VIRGINSUNRISE,
+	"/cherrycoke":    CHERRYCOKE,
+	"/vodka":         VODKA,
+	"/i_dont_know":   PINKYMONSTER, // ХУЙНЯ
 }
 
 var CoctailToESPNames = map[Coctail]string{
@@ -94,6 +106,10 @@ var CoctailToESPNames = map[Coctail]string{
 	BERRYCITRUS:    "BERRYCITRUS",
 	DOUBLE_TROUBLE: "DOUBLE_TROUBLE",
 	CITRUSCOLA:     "CITRUSCOLA",
+	FRUITPUNCH:     "FRUITPUNCH",
+	VIRGINSUNRISE:  "VIRGINSUNRISE",
+	CHERRYCOKE:     "CHERRYCOKE",
+	VODKA:          "VODKA",
 }
 
 var CoctailToNames = map[Coctail]string{
@@ -116,29 +132,37 @@ var CoctailToNames = map[Coctail]string{
 	BERRYCITRUS:    "berrycitrus",
 	DOUBLE_TROUBLE: "double_trouble",
 	CITRUSCOLA:     "citruscola",
+	FRUITPUNCH:     "fruitpunch",
+	VIRGINSUNRISE:  "virginsunrise",
+	CHERRYCOKE:     "cherrycoke",
+	VODKA:          "vodka",
 }
 
-// DEBUG - чатгпт уебан не умеет до 6 считать - перепроверить
+// SEX: Vodka, Rum, Cola, Orange juice, Pineapple juice, Cherry juice
 var CoctailDescription = map[Coctail]string{
-	LONGISLAND:     "Vodka, Rum, Triple sec, Cola or juice – strong and refreshing cocktail",
-	BLUELOGOON:     "Vodka, Blue Curacao liqueur, Lemonade – bright blue cocktail",
-	MOJITO:         "Rum, Lime, Sugar, Mint, Soda – classic Cuban cocktail",
-	PORNSTAR:       "Vodka, Passion fruit, Champagne – sweet tropical cocktail",
-	PINKYMONSTER:   "Vodka, Rum, Cranberry juice, Orange juice – fruity cocktail",
-	SEXONTHEBICH:   "Vodka, Peach liqueur, Juice – sweet and strong",
-	MARGARITA:      "Rum, Triple sec, Lime – sour and sweet classic",
-	MANHATTAN:      "Whiskey, Sweet vermouth, Bitters – strong cocktail",
-	SUNRISE:        "Rum, Orange juice, Grenadine – beautiful gradient",
-	CUBALIBRE:      "Rum, Cola, Lime – simple and popular",
+	LONGISLAND:     "Vodka, Rum, Cola, Orange juice – strong and refreshing mix in the Long Island style",
+	BLUELOGOON:     "Vodka, Pineapple juice, Cherry juice – bright tropical cocktail without liqueurs",
+	MOJITO:         "Rum, Pineapple juice, Cola – light version without mint, with a tropical twist",
+	PORNSTAR:       "Vodka, Pineapple juice, Cherry juice – sweet and fruity cocktail",
+	PINKYMONSTER:   "Vodka, Rum, Cherry juice, Orange juice – fruity and slightly tangy mix",
+	SEXONTHEBICH:   "Vodka, Orange juice, Pineapple juice, Cherry juice – sweet and vibrant tropical cocktail",
+	MARGARITA:      "Rum, Orange juice, Pineapple juice – smooth citrus-tropical blend",
+	MANHATTAN:      "Rum, Cola, Cherry juice – sweet and strong variation in Manhattan style",
+	SUNRISE:        "Rum, Orange juice, Cherry juice – beautiful layered cocktail similar to Tequila Sunrise",
+	CUBALIBRE:      "Rum, Cola, Orange juice – simple and popular variation of Cuba Libre",
 	RUMCOKE:        "Rum, Cola – classic combination",
-	CAPECODDER:     "Vodka, Cranberry juice – light and tart",
-	SCREWDRIVER:    "Vodka, Orange juice – simple and refreshing",
-	SEABREEZE:      "Vodka, Cranberry juice, Grapefruit juice – tart and fruity",
-	MADRASS:        "Vodka, Cranberry juice, Orange juice – similar to Sea Breeze",
-	TROPICALMIX:    "Rum, Orange juice, Cranberry juice – tropical mix",
-	BERRYCITRUS:    "Vodka, Tequila, Cranberry juice, Orange juice – berry-citrus cocktail",
-	DOUBLE_TROUBLE: "Vodka, Rum, Cranberry juice – strong fruity drink",
-	CITRUSCOLA:     "Vodka, Orange juice, Cola – light and refreshing",
+	CAPECODDER:     "Vodka, Cherry juice – light and refreshing cocktail",
+	SCREWDRIVER:    "Vodka, Orange juice – simple and refreshing cocktail",
+	SEABREEZE:      "Vodka, Pineapple juice, Cherry juice – fruity and refreshing variation",
+	MADRASS:        "Vodka, Orange juice, Cherry juice – sweet citrus and berry flavor",
+	TROPICALMIX:    "Rum, Pineapple juice, Cherry juice – tropical mix with rich flavor",
+	BERRYCITRUS:    "Vodka, Rum, Cherry juice, Orange juice – citrus and berry fusion",
+	DOUBLE_TROUBLE: "Vodka, Rum, Cherry juice – strong and fruity drink",
+	CITRUSCOLA:     "Vodka, Orange juice, Cola – unusual and refreshing combination",
+	FRUITPUNCH:     "Orange juice, Pineapple juice, Cherry juice – tropical and refreshing fruit punch",
+	VIRGINSUNRISE:  "Orange juice, Cherry juice – a non-alcoholic version of the classic Tequila Sunrise",
+	CHERRYCOKE:     "Cherry juice, Cola - refreshing daily mix",
+	VODKA:          "Vodka - simple vodka",
 }
 
 func BuildCoctailList() string {

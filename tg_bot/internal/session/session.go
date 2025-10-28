@@ -16,13 +16,15 @@ const (
 	AUTHORIZED
 	WAIT_DRINK
 	RECOMMENDATION_STEP1
+	RECOMMENDATION_STEP2
 	DONE
 )
 
 type UserSession struct {
-	State          SessionState
-	ScheduledTime  time.Time
-	ScheduledDrink coctail.Coctail
+	State            SessionState
+	ScheduledTime    time.Time
+	ScheduledDrink   coctail.Coctail
+	RecommenedDrinks [][]coctail.Coctail
 }
 
 type UserSessions struct {
