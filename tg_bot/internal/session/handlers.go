@@ -8,7 +8,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/a-palonskaa/SmartBar/tg_bot/internal/coctail"
-	"github.com/a-palonskaa/SmartBar/tg_bot/internal/msg"
+	msg "github.com/a-palonskaa/SmartBar/tg_bot/internal/msg/prod"
 	"github.com/a-palonskaa/SmartBar/tg_bot/internal/recommendation"
 )
 
