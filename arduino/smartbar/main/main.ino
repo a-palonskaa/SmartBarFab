@@ -30,14 +30,14 @@ const int microstep = 1; // 1 = full step, 2 = half, 4 = 1/4, 8 = 1/8, 16 = 1/16
 const unsigned long stepPulseWidth = 2000;   // STEP pulse width (us)
 const unsigned long stepDelay      = 2000;   // delay between pulses (us)
 
-long stepNeeded = 0;
+long stepsNeeded = 0;
 
 //--------------------end constants for smartbar--------------------
 
 Servo m1, m2, m3, m4, m5, m6;
 Servo* drinkMotors[] = { &m1, &m2, &m3, &m4, &m5, &m6 };
-int motorCounts[] = {0, 0, 0, 0, 0, 0}
-int timePortion[] = {15060, 14820, 14750, 14810, 15270, 15510, 16070, 16290, 17270, 17730, 18730, 19780, 20860, 25680}
+int motorCounts[] = {0, 0, 0, 0, 0, 0};
+int timePortion[] = {15060, 14820, 14750, 14810, 15270, 15510, 16070, 16290, 17270, 17730, 18730, 19780, 20860, 25680};
 
 void initMotors() {
   m1.attach(9);
@@ -55,8 +55,8 @@ void initSerialPorts() {
 
 void poorLiquid(Drinks liquidType, int portion) {
     int number = motorCounts[liquidType];
-    if number + portion > 14 {
-        Serial.println("ran out of liquid")
+    if (number + portion > 14) {
+        Serial.println("ran out of liquid");
         return;
     }
 
@@ -101,7 +101,7 @@ void cookLONGISLAND() {
     stepMotor(stepsNeeded);
     poorLiquid(Drinks::Cola, 1);
     stepMotor(stepsNeeded);
-    poorLiquid(Drinks::Orange, 1);
+    poorLiquid(Drinks::OrangeJuice, 1);
     stepMotor(3*stepsNeeded);
 }
 
@@ -322,7 +322,7 @@ void processCommand(String command) {
     } else if (command == "SEXONTHEBICH") {
         cookSEXONTHEBICH();
     } else if (command == "MARGARITA") {
-        cookSMARGARITA();
+        cookMARGARITA();
     } else if (command == "MANHATTAN") {
         cookMANHATTAN();
     } else if (command == "SUNRISE") {
