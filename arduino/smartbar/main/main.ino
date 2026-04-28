@@ -1,424 +1,408 @@
 #include <Servo.h>
-#include <avr/interrupt.h>
-#include <util/atomic.h>
 
-constexpr uint32_t DELAY_BETWEEN_PROCESSING_MS = 1000;
-
-constexpr uint8_t LED_STRIP_PIN = 8;
-constexpr uint8_t LED_STRIP_ON_LEVEL  = HIGH;
-constexpr uint8_t LED_STRIP_OFF_LEVEL = LOW;
-
-constexpr uint16_t TIMER3_COMPARE_VALUE = 24999;
-
-constexpr uint8_t START_BLINK_COUNT = 3;
-constexpr uint8_t START_BLINK_INTERVAL_TICKS = 1;
-
-constexpr uint8_t FINISH_BLINK_COUNT = 2;
-constexpr uint8_t FINISH_BLINK_INTERVAL_TICKS = 2;
-
-constexpr uint8_t MAX_LED_TICKS_PENDING = 20;
-
-enum LedMode : uint8_t {
-  LED_MODE_STEADY_ON = 0,
-  LED_MODE_BLINKING  = 1,
-};
-
-volatile uint8_t ledTicksPending = 0;
-
-LedMode ledMode = LED_MODE_STEADY_ON;
-bool ledIsOn = true;
-
-uint8_t ledTogglesRemaining = 0;
-uint8_t ledBlinkIntervalTicks = 1;
-uint8_t ledBlinkTickCounter = 0;
-
-ISR(TIMER3_COMPA_vect) {
-  if (ledTicksPending < MAX_LED_TICKS_PENDING) {
-    ledTicksPending++;
-  }
-}
-
-void setLedStrip(bool enabled) {
-  ledIsOn = enabled;
-  digitalWrite(LED_STRIP_PIN, enabled ? LED_STRIP_ON_LEVEL : LED_STRIP_OFF_LEVEL);
-}
-
-uint8_t takeLedTicks() {
-  uint8_t ticks = 0;
-
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-    ticks = ledTicksPending;
-    ledTicksPending = 0;
-  }
-
-  return ticks;
-}
-
-void finishLedBlinking() {
-  ledMode = LED_MODE_STEADY_ON;
-  ledTogglesRemaining = 0;
-  ledBlinkTickCounter = 0;
-  setLedStrip(true);
-}
-
-void startLedBlink(uint8_t blinkCount, uint8_t intervalTicks) {
-  if (blinkCount == 0) {
-    finishLedBlinking();
-    return;
-  }
-
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-    ledTicksPending = 0;
-  }
-
-  ledMode = LED_MODE_BLINKING;
-  ledTogglesRemaining = blinkCount * 2;
-  ledBlinkIntervalTicks = intervalTicks;
-  ledBlinkTickCounter = 0;
-
-  setLedStrip(true);
-}
-
-void updateLedOneTimerTick() {
-  if (ledMode == LED_MODE_STEADY_ON) {
-    if (!ledIsOn) {
-      setLedStrip(true);
-    }
-    return;
-  }
-
-  if (ledMode != LED_MODE_BLINKING) {
-    finishLedBlinking();
-    return;
-  }
-
-  ledBlinkTickCounter++;
-
-  if (ledBlinkTickCounter < ledBlinkIntervalTicks) {
-    return;
-  }
-
-  ledBlinkTickCounter = 0;
-
-  if (ledTogglesRemaining == 0) {
-    finishLedBlinking();
-    return;
-  }
-
-  setLedStrip(!ledIsOn);
-  ledTogglesRemaining--;
-
-  if (ledTogglesRemaining == 0) {
-    finishLedBlinking();
-  }
-}
-
-void updateLedStrip() {
-  uint8_t ticks = takeLedTicks();
-
-  while (ticks > 0) {
-    updateLedOneTimerTick();
-    ticks--;
-  }
-}
-
-void delayWithLedUpdate(uint32_t delayMs) {
-  const uint32_t startMs = millis();
-
-  while (millis() - startMs < delayMs) {
-    updateLedStrip();
-    delay(1);
-  }
-}
-
-void onPouringStarted() {
-  startLedBlink(START_BLINK_COUNT, START_BLINK_INTERVAL_TICKS);
-}
-
-void onPouringFinished() {
-  startLedBlink(FINISH_BLINK_COUNT, FINISH_BLINK_INTERVAL_TICKS);
-}
-
-void initLedStrip() {
-  pinMode(LED_STRIP_PIN, OUTPUT);
-  setLedStrip(true);
-}
-
-void initLedTimer3() {
-  noInterrupts();
-
-  TCCR3A = 0;
-  TCCR3B = 0;
-  TCNT3  = 0;
-
-  OCR3A = TIMER3_COMPARE_VALUE;
-
-  TCCR3B |= (1 << WGM32);
-  TCCR3B |= (1 << CS31) | (1 << CS30);
-
-  TIMSK3 |= (1 << OCIE3A);
-
-  interrupts();
-}
+constexpr int DELAY_BETWEEN_PROCESSING = 1000;
 
 enum Drinks {
-  Vodka          = 0,
-  Rum            = 1,
-  Cola           = 2,
-  OrangeJuice    = 3,
-  PineappleJuice = 4,
-  CherryJuice    = 5,
+    Vodka          = 0,
+    Rum            = 1,
+    Cola           = 2,
+    OrangeJuice    = 3,
+    PineappleJuice = 4,
+    CherryJuice    = 5,
 };
 
-const int maxQueueSize = 10;
-
+//--------------------constants for smartbar--------------------
+const int maxQueueSize = 10;  // Maximum size of the command queue
 String commandQueue[maxQueueSize];
+int commandQueueStart = 0;  // Pointer to the start of the queue
+int commandQueueEnd = 0;    // Pointer to the end of the queue
+int commandQueueCount = 0;  // Keeps track of the number of elements in the queue
 
-int commandQueueStart = 0;
-int commandQueueEnd = 0;
-int commandQueueCount = 0;
+const int DIR_PIN  = 8;   // direction
+const int STEP_PIN = 9;   // step (pulse)
+const int ENABLE_PIN = 10;
+const float STEP_ANGLE = 1.8; // degrees per full step
+const int stepsPerRev = (int)(360.0 / STEP_ANGLE); // 200
+const float degreesToMove = 600.0;
+const int microstep = 1; // 1 = full step, 2 = half, 4 = 1/4, 8 = 1/8, 16 = 1/16
+
+// delays for speed
+const unsigned long stepPulseWidth = 2000;   // STEP pulse width (us)
+const unsigned long stepDelay      = 10000;   // delay between pulses (us)
+
+long stepsNeeded = 0;
+
+volatile bool stopFlag = false;
+const int STOP_PIN = 2;
+
+void stopISR() {
+  stopFlag = true;
+}
+
+//--------------------end constants for smartbar--------------------
 
 Servo m1, m2, m3, m4, m5, m6;
-
-Servo* drinkMotors[] = {
-  &m1,
-  &m2,
-  &m3,
-  &m4,
-  &m5,
-  &m6,
-};
-
-int flowPin1 = 2;
-int flowPin2 = 3;
-int flowPin3 = 4;
-int flowPin4 = 5;
-int flowPin5 = 6;
-int flowPin6 = 7;
-
-volatile uint32_t counter1 = 0;
-volatile uint32_t counter2 = 0;
-volatile uint32_t counter3 = 0;
-volatile uint32_t counter4 = 0;
-volatile uint32_t counter5 = 0;
-volatile uint32_t counter6 = 0;
-
-volatile uint32_t* drinkFlowmeters[] = {
-  &counter1,
-  &counter2,
-  &counter3,
-  &counter4,
-  &counter5,
-  &counter6,
-};
-
-void count1() { counter1++; }
-void count2() { counter2++; }
-void count3() { counter3++; }
-void count4() { counter4++; }
-void count5() { counter5++; }
-void count6() { counter6++; }
-
-uint32_t takeAndResetCounter(volatile uint32_t* counter) {
-  uint32_t value = 0;
-
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-    value = *counter;
-    *counter = 0;
-  }
-
-  return value;
-}
-
-void measure(float targetVolume, volatile uint32_t* counter) {
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-    *counter = 0;
-  }
-
-  uint32_t varTime = 0;
-  float varQ = 0.0f;
-  float varV = 0.0f;
-
-  while (varV < targetVolume) {
-    const uint32_t pulses = takeAndResetCounter(counter);
-
-    varQ = (float)pulses / ((float)pulses * 5.9f + 4570.0f);
-
-    varTime = millis();
-    (void)varTime;
-
-    varV += varQ;
-
-    delayWithLedUpdate(10);
-  }
-}
-
-void attachFlowInterrupt(int pin, void (*isr)()) {
-  pinMode(pin, INPUT_PULLUP);
-
-  const int interruptPin = digitalPinToInterrupt(pin);
-
-  if (interruptPin == NOT_AN_INTERRUPT) {
-    Serial.print("WARNING: pin ");
-    Serial.print(pin);
-    Serial.println(" has no interrupt");
-    return;
-  }
-
-  attachInterrupt(interruptPin, isr, RISING);
-}
-
-void initFlowSensors() {
-  attachFlowInterrupt(flowPin1, count1);
-  attachFlowInterrupt(flowPin2, count2);
-  attachFlowInterrupt(flowPin3, count3);
-  attachFlowInterrupt(flowPin4, count4);
-  attachFlowInterrupt(flowPin5, count5);
-  attachFlowInterrupt(flowPin6, count6);
-}
+Servo* drinkMotors[] = { &m1, &m2, &m3, &m4, &m5, &m6 };
+int motorCounts[] = {0, 0, 0, 0, 0, 0};
+int timePortion[] = {15060, 14820, 14750, 14810, 15270, 15510, 16070, 16290, 17270, 17730, 18730, 19780, 20860, 25680};
 
 void initMotors() {
-  m1.attach(9);
-  m2.attach(10);
-  m3.attach(11);
-  m4.attach(12);
-  m5.attach(13);
-  m6.attach(14);
+  m1.attach(4);
+  m2.attach(7);
+  m3.attach(12);
+  m4.attach(6);
+  m5.attach(3);
+  m6.attach(5);
 }
 
 void initSerialPorts() {
   Serial.begin(9600);
-  Serial1.begin(115200);
-  Serial1.setTimeout(50);
+  Serial1.begin(115200);  // RX1 = Pin 19, TX1 = Pin 18
 }
 
-void poorLiquid(Drinks liquidType, int liquidVolume) {
-  onPouringStarted();
+const int R_PIN = 11;
+const int G_PIN = 10;
+const int B_PIN = 22;
 
+void initLightning() {
+  pinMode(R_PIN, OUTPUT);
+  pinMode(G_PIN, OUTPUT);
+  pinMode(B_PIN, OUTPUT);
+
+  analogWrite(R_PIN, 0);
+  analogWrite(G_PIN, 0);
+  analogWrite(B_PIN, 0);
+}
+
+void poorLiquid(Drinks liquidType, int portion) {
+    int number = motorCounts[liquidType];
+    if (number + portion > 14) {
+        Serial.println("ran out of liquid");
+        return;
+    }
+
+    int time = 0;
+    for (int n = number-1; n < number + portion; n++) {
+        time += timePortion[n];
+    }
+
+  motorCounts[liquidType] += portion;
   drinkMotors[liquidType]->write(0);
-  delayWithLedUpdate(200);
-
-  measure(liquidVolume, drinkFlowmeters[liquidType]);
-
-  drinkMotors[liquidType]->write(180);
-  delayWithLedUpdate(200);
-
-  onPouringFinished();
+  drinkMotors[liquidType]->write(100);
+  delay(time);
+  drinkMotors[liquidType]->write(0);
 }
 
+//---------------lower servo---------------
+
+void iniLowerServo() {
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(ENABLE_PIN, OUTPUT);
+
+  digitalWrite(ENABLE_PIN, LOW);
+  digitalWrite(DIR_PIN, LOW); // HIGH if for another direction
+
+  stepsNeeded = (long)( (stepsPerRev * (degreesToMove / 360.0)) * microstep );
+}
+
+void stepMotor(long steps) {
+  for (long i = 0; i < steps; ++i) {
+    if (stopFlag) return;
+    digitalWrite(STEP_PIN, HIGH);
+    delayMicroseconds(stepPulseWidth);
+    digitalWrite(STEP_PIN, LOW);
+    delayMicroseconds(stepDelay);
+  }
+}
+
+//----------cocktail functions----------
 void cookLONGISLAND() {
-  poorLiquid(Drinks::Vodka, 50);
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Cola, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(3*stepsNeeded);
 }
 
 void cookBLUELOGOON() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(4*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookMOJITO() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Cola, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 2);
+    stepMotor(2*stepsNeeded);
 }
 
 void cookPORNSTAR() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 2);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookPINKYMONSTER() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookSEXONTHEBICH() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookMARGARITA() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(2*stepsNeeded);
 }
 
 void cookMANHATTAN() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Cola, 1);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookSUNRISE() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookCUBALIBRE() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Cola, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(3*stepsNeeded);
+
 }
 
 void cookRUMCOKE() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Cola, 2);
+    stepMotor(4*stepsNeeded);
 }
 
 void cookCAPECODDER() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(5*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 2);
+    stepMotor(stepsNeeded);
 }
 
 void cookSCREWDRIVER() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 2);
+    stepMotor(3*stepsNeeded);
 }
 
 void cookSEABREEZE() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(4*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookMADRASS() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookTROPICALMIX() {
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookBERRYCITRUS() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookDOUBLE_TROUBLE() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::Rum, 1);
+    stepMotor(4*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
 }
 
 void cookCITRUSCOLA() {
+    poorLiquid(Drinks::Vodka, 1);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::Cola, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(3*stepsNeeded);
 }
 
 void cookFRUITPUNCH() {
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::PineappleJuice, 1);
+    stepMotor(stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 1);
+    stepMotor(stepsNeeded);
+}
+
+void cookVIRGINSUNRISE() {
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::OrangeJuice, 2);
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 2);
+    stepMotor(stepsNeeded);
+}
+
+void cookCHERRYCOKE() {
+    stepMotor(2*stepsNeeded);
+    poorLiquid(Drinks::Cola, 2);
+    stepMotor(3*stepsNeeded);
+    poorLiquid(Drinks::CherryJuice, 2);
+    stepMotor(stepsNeeded);
+}
+
+void cookVODKA() {
+    poorLiquid(Drinks::Vodka, 2);
+    stepMotor(6*stepsNeeded);
+}
+
+void migRed() {
+  analogWrite(R_PIN, 255);
+  analogWrite(G_PIN, 0);
+  analogWrite(B_PIN, 0);
+}
+
+void migBlue() {
+  analogWrite(R_PIN, 0);
+  analogWrite(G_PIN, 0);
+  analogWrite(B_PIN, 255);
+}
+
+void migGreen() {
+  analogWrite(R_PIN, 0);
+  analogWrite(G_PIN, 255);
+  analogWrite(B_PIN, 0);
 }
 
 void processCommand(String command) {
-  Serial.println("Processing: " + command);
+    stopFlag = false;
+    Serial.println("Processing: " + command);
 
-  if (command == "LONGISLAND") {
-    cookLONGISLAND();
-  } else if (command == "BLUELOGOON") {
-    cookBLUELOGOON();
-  } else if (command == "MOJITO") {
-    cookMOJITO();
-  } else if (command == "PORNSTAR") {
-    cookPORNSTAR();
-  } else if (command == "PINKYMONSTER") {
-    cookPINKYMONSTER();
-  } else if (command == "SEXONTHEBICH") {
-    cookSEXONTHEBICH();
-  } else if (command == "MARGARITA") {
-    cookMARGARITA();
-  } else if (command == "MANHATTAN") {
-    cookMANHATTAN();
-  } else if (command == "SUNRISE") {
-    cookSUNRISE();
-  } else if (command == "CUBALIBRE") {
-    cookCUBALIBRE();
-  } else if (command == "RUMCOKE") {
-    cookRUMCOKE();
-  } else if (command == "CAPECODDER") {
-    cookCAPECODDER();
-  } else if (command == "SCREWDRIVER") {
-    cookSCREWDRIVER();
-  } else if (command == "SEABREEZE") {
-    cookSEABREEZE();
-  } else if (command == "MADRASS") {
-    cookMADRASS();
-  } else if (command == "TROPICALMIX") {
-    cookTROPICALMIX();
-  } else if (command == "BERRYCITRUS") {
-    cookBERRYCITRUS();
-  } else if (command == "DOUBLE_TROUBLE") {
-    cookDOUBLE_TROUBLE();
-  } else if (command == "CITRUSCOLA") {
-    cookCITRUSCOLA();
-  } else if (command == "FRUITPUNCH") {
-    cookFRUITPUNCH();
-  } else if (command == "VIRGINSUNRISE") {
-
-  } else if (command == "CHERRYCOKE") {
-
-  } else if (command == "VODKA") {
-
-  } else {
-    Serial.println("unknown coctail " + command);
-  }
+migBlue();
+    if (command == "LONGISLAND") {
+        cookLONGISLAND();
+    } else if (command == "BLUELOGOON") {
+        cookBLUELOGOON();
+    } else if (command == "MOJITO") {
+        cookMOJITO();
+    } else if (command == "PORNSTAR") {
+        cookPORNSTAR();
+    } else if (command == "PINKYMONSTER") {
+        cookPINKYMONSTER();
+    } else if (command == "SEXONTHEBICH") {
+        cookSEXONTHEBICH();
+    } else if (command == "MARGARITA") {
+        cookMARGARITA();
+    } else if (command == "MANHATTAN") {
+        cookMANHATTAN();
+    } else if (command == "SUNRISE") {
+        cookSUNRISE();
+    } else if (command == "CUBALIBRE") {
+        cookCUBALIBRE();
+    } else if (command == "RUMCOKE") {
+        cookRUMCOKE();
+    } else if (command == "CAPECODDER") {
+        cookCAPECODDER();
+    } else if (command == "SCREWDRIVER") {
+        cookSCREWDRIVER();
+    } else if (command == "SEABREEZE") {
+        cookSEABREEZE();
+    } else if (command == "MADRASS") {
+        cookMADRASS();
+    } else if (command == "TROPICALMIX") {
+        cookTROPICALMIX();
+    } else if (command == "BERRYCITRUS") {
+        cookBERRYCITRUS();
+    } else if (command == "DOUBLE_TROUBLE") {
+        cookDOUBLE_TROUBLE();
+    } else if (command == "CITRUSCOLA") {
+        cookCITRUSCOLA();
+    } else if (command == "FRUITPUNCH") {
+        cookFRUITPUNCH();
+    } else if (command == "VIRGINSUNRISE") {
+        cookVIRGINSUNRISE();
+    } else if (command == "CHERRYCOKE") {
+        cookCHERRYCOKE();
+    } else if (command == "VODKA") {
+        cookVODKA();
+    } else {
+        Serial.println("unknown coctail " + command); // DEBUG
+    }
+    migRed();
+    delay(1000);
 }
 
 void addCommandToQueue(String command) {
@@ -426,67 +410,32 @@ void addCommandToQueue(String command) {
     commandQueue[commandQueueEnd] = command;
     commandQueueEnd = (commandQueueEnd + 1) % maxQueueSize;
     commandQueueCount++;
-  } else {
-    Serial.println("queue is full");
   }
-}
-
-void readSerialCommandIfAvailable() {
-  if (!Serial1.available()) {
-    return;
-  }
-
-  String command = Serial1.readString();
-  command.trim();
-
-  if (command.length() == 0) {
-    return;
-  }
-
-  addCommandToQueue(command);
-}
-
-void processQueuedCommandIfNeeded() {
-  static bool hasProcessedCommand = false;
-  static uint32_t lastCommandProcessMs = 0;
-
-  if (commandQueueCount == 0) {
-    return;
-  }
-
-  const uint32_t nowMs = millis();
-
-  if (hasProcessedCommand &&
-      nowMs - lastCommandProcessMs < DELAY_BETWEEN_PROCESSING_MS) {
-    return;
-  }
-
-  String commandToProcess = commandQueue[commandQueueStart];
-
-  commandQueueStart = (commandQueueStart + 1) % maxQueueSize;
-  commandQueueCount--;
-
-  processCommand(commandToProcess);
-
-  hasProcessedCommand = true;
-  lastCommandProcessMs = millis();
 }
 
 void setup() {
-  initLedStrip();
-
   initMotors();
   initSerialPorts();
-  initFlowSensors();
-
-  initLedTimer3();
-
-  Serial.println("SmartBarFab started");
+  iniLowerServo();
+  initLightning();
+  pinMode(STOP_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(STOP_PIN), stopISR, FALLING);
 }
 
 void loop() {
-  updateLedStrip();
+    migGreen();
+  if (Serial1.available()) {
+    String command = Serial1.readString();
+    command.trim();
+    addCommandToQueue(command);
+  }
 
-  readSerialCommandIfAvailable();
-  processQueuedCommandIfNeeded();
+  if (commandQueueCount > 0) {
+    String commandToProcess = commandQueue[commandQueueStart];
+    commandQueueStart = (commandQueueStart + 1) % maxQueueSize;
+    commandQueueCount--;
+    processCommand(commandToProcess);
+  }
+
+  delay(DELAY_BETWEEN_PROCESSING);
 }
