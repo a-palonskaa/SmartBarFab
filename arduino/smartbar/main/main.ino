@@ -32,6 +32,13 @@ const unsigned long stepDelay      = 10000;   // delay between pulses (us)
 
 long stepsNeeded = 0;
 
+volatile bool stopFlag = false;
+const int STOP_PIN = 2;
+
+void stopISR() {
+  stopFlag = true;
+}
+
 //--------------------end constants for smartbar--------------------
 
 Servo m1, m2, m3, m4, m5, m6;
@@ -42,7 +49,7 @@ int timePortion[] = {15060, 14820, 14750, 14810, 15270, 15510, 16070, 16290, 172
 void initMotors() {
   m1.attach(4);
   m2.attach(7);
-  m3.attach(2);
+  m3.attach(12);
   m4.attach(6);
   m5.attach(3);
   m6.attach(5);
@@ -78,10 +85,10 @@ void poorLiquid(Drinks liquidType, int portion) {
     for (int n = number-1; n < number + portion; n++) {
         time += timePortion[n];
     }
-    
+
   motorCounts[liquidType] += portion;
-  drinkMotors[liquidType]->write(0);   
-  drinkMotors[liquidType]->write(100);   
+  drinkMotors[liquidType]->write(0);
+  drinkMotors[liquidType]->write(100);
   delay(time);
   drinkMotors[liquidType]->write(0);
 }
@@ -101,6 +108,7 @@ void iniLowerServo() {
 
 void stepMotor(long steps) {
   for (long i = 0; i < steps; ++i) {
+    if (stopFlag) return;
     digitalWrite(STEP_PIN, HIGH);
     delayMicroseconds(stepPulseWidth);
     digitalWrite(STEP_PIN, LOW);
@@ -340,6 +348,7 @@ void migGreen() {
 }
 
 void processCommand(String command) {
+    stopFlag = false;
     Serial.println("Processing: " + command);
 
 migBlue();
@@ -409,6 +418,8 @@ void setup() {
   initSerialPorts();
   iniLowerServo();
   initLightning();
+  pinMode(STOP_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(STOP_PIN), stopISR, FALLING);
 }
 
 void loop() {
